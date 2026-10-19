@@ -11,7 +11,7 @@ const fieldSchema = new mongoose.Schema(
     area: { type: Number, required: true },
     areaUnit: {
       type: String,
-      enum: ['ACRE', 'HECTARE', 'BIGHA'],
+      enum: ['ACRE', 'HECTARE', 'BIGHA', 'KANAL'],
       default: 'ACRE'
     },
     soilType: { type: String, trim: true },

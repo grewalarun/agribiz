@@ -1,4 +1,6 @@
 import CropCycle from '../models/CropCycle.js';
+import Farm from '../models/Farm.js';
+import Field from '../models/Field.js';
 import Expense from '../models/Expense.js';
 import Harvest, { roundQuantity } from '../models/Harvest.js';
 import Sale from '../models/Sale.js';
@@ -87,6 +89,7 @@ function buildCycleRow(cycle, financials) {
 
   return {
     cycleId: cycle._id,
+    farmId: cycle.farmId,
     crop: crop ? { _id: crop._id, name: crop.name, localName: crop.localName } : null,
     field: field ? { _id: field._id, name: field.name, area: field.area, areaUnit: field.areaUnit } : null,
     seasonType: cycle.seasonType,
@@ -261,6 +264,87 @@ export async function getSeasonReport(req, res) {
       totals: sumRows(rows),
       byCrop,
       cycles: rows
+    });
+  } catch (error) {
+    return handleError(res, error);
+  }
+}
+
+const COMPLETED_STATUSES = ['HARVESTED', 'CLOSED'];
+
+function latestCompleted(rows) {
+  return rows
+    .filter((row) => COMPLETED_STATUSES.includes(row.status))
+    .sort((a, b) => new Date(b.endDate || b.startDate) - new Date(a.endDate || a.startDate))[0] ?? null;
+}
+
+// Money spent so far on crops that are still growing
+function activeInvestment(rows) {
+  return roundAmount(rows.filter((row) => row.status === 'ACTIVE').reduce((sum, row) => sum + row.expenses, 0));
+}
+
+// GET /api/reports/farms — one card per farm: field count, crops growing, money in active crops, all-time totals
+export async function getFarmsReport(req, res) {
+  try {
+    const farms = await Farm.find({ userId: req.user._id }).sort({ createdAt: -1 });
+    const farmIds = farms.map((farm) => farm._id);
+
+    const [fieldCounts, cycles] = await Promise.all([
+      Field.aggregate([{ $match: { farmId: { $in: farmIds } } }, { $group: { _id: '$farmId', count: { $sum: 1 } } }]),
+      findCycles({ userId: req.user._id, farmId: { $in: farmIds } })
+    ]);
+    const rows = await buildCycleRows(req.user._id, cycles);
+    const countByFarm = new Map(fieldCounts.map((row) => [String(row._id), row.count]));
+
+    const report = farms.map((farm) => {
+      const farmRows = rows.filter((row) => String(row.farmId) === String(farm._id));
+      return {
+        farm,
+        fieldCount: countByFarm.get(String(farm._id)) || 0,
+        activeCycles: farmRows.filter((row) => row.status === 'ACTIVE').length,
+        activeInvestment: activeInvestment(farmRows),
+        lastCompletedCycle: latestCompleted(farmRows),
+        totals: sumRows(farmRows)
+      };
+    });
+
+    return res.status(200).json({ farms: report, totals: sumRows(rows) });
+  } catch (error) {
+    return handleError(res, error);
+  }
+}
+
+// GET /api/reports/farms/:farmId — farm totals plus each field's current and last crop
+export async function getFarmReport(req, res) {
+  try {
+    const farm = await Farm.findOne({ _id: req.params.farmId, userId: req.user._id });
+    if (!farm) {
+      return res.status(404).json({ message: 'Farm not found' });
+    }
+
+    const [fields, cycles] = await Promise.all([
+      Field.find({ farmId: farm._id }).sort({ createdAt: 1 }),
+      findCycles({ userId: req.user._id, farmId: farm._id })
+    ]);
+    const rows = await buildCycleRows(req.user._id, cycles);
+
+    const fieldReports = fields.map((field) => {
+      const fieldRows = rows.filter((row) => String(row.field?._id) === String(field._id));
+      return {
+        field,
+        activeCycle: fieldRows.find((row) => row.status === 'ACTIVE') ?? null,
+        plannedCycles: fieldRows.filter((row) => row.status === 'PLANNED'),
+        lastCompletedCycle: latestCompleted(fieldRows),
+        totals: sumRows(fieldRows)
+      };
+    });
+
+    return res.status(200).json({
+      farm,
+      activeCycles: rows.filter((row) => row.status === 'ACTIVE').length,
+      activeInvestment: activeInvestment(rows),
+      totals: sumRows(rows),
+      fields: fieldReports
     });
   } catch (error) {
     return handleError(res, error);
