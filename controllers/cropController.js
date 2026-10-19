@@ -1,4 +1,7 @@
 import Crop from '../models/Crop.js';
+import { pick } from '../utils/pick.js';
+
+const UPDATABLE_FIELDS = ['name', 'localName', 'category', 'defaultUnit', 'defaultAreaUnit', 'active'];
 
 export async function createCrop(req, res) {
   try {
@@ -9,6 +12,7 @@ export async function createCrop(req, res) {
     }
 
     const crop = await Crop.create({
+      userId: req.user._id,
       name,
       localName,
       category,
@@ -19,6 +23,9 @@ export async function createCrop(req, res) {
 
     return res.status(201).json({ crop });
   } catch (error) {
+    if (error.code === 11000) {
+      return res.status(409).json({ message: 'Crop with this name already exists' });
+    }
     console.error(error);
     return res.status(500).json({ message: 'Server error' });
   }
@@ -26,7 +33,7 @@ export async function createCrop(req, res) {
 
 export async function getCrops(req, res) {
   try {
-    const crops = await Crop.find().sort({ createdAt: -1 });
+    const crops = await Crop.find({ userId: req.user._id }).sort({ createdAt: -1 });
     return res.status(200).json({ crops });
   } catch (error) {
     console.error(error);
@@ -37,7 +44,7 @@ export async function getCrops(req, res) {
 export async function getCropById(req, res) {
   try {
     const { cropId } = req.params;
-    const crop = await Crop.findById(cropId);
+    const crop = await Crop.findOne({ _id: cropId, userId: req.user._id });
 
     if (!crop) {
       return res.status(404).json({ message: 'Crop not found' });
@@ -53,19 +60,20 @@ export async function getCropById(req, res) {
 export async function updateCrop(req, res) {
   try {
     const { cropId } = req.params;
-    const crop = await Crop.findById(cropId);
+    const crop = await Crop.findOne({ _id: cropId, userId: req.user._id });
 
     if (!crop) {
       return res.status(404).json({ message: 'Crop not found' });
     }
 
-    Object.keys(req.body).forEach((key) => {
-      crop[key] = req.body[key];
-    });
+    crop.set(pick(req.body, UPDATABLE_FIELDS));
 
     await crop.save();
     return res.status(200).json({ crop });
   } catch (error) {
+    if (error.code === 11000) {
+      return res.status(409).json({ message: 'Crop with this name already exists' });
+    }
     console.error(error);
     return res.status(500).json({ message: 'Server error' });
   }
@@ -74,7 +82,7 @@ export async function updateCrop(req, res) {
 export async function deleteCrop(req, res) {
   try {
     const { cropId } = req.params;
-    const crop = await Crop.findById(cropId);
+    const crop = await Crop.findOne({ _id: cropId, userId: req.user._id });
 
     if (!crop) {
       return res.status(404).json({ message: 'Crop not found' });

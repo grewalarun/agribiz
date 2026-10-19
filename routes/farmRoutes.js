@@ -9,10 +9,12 @@ import {
   getFieldsByFarm
 } from '../controllers/farmController.js';
 import { authenticate } from '../middleware/authMiddleware.js';
+import { validateObjectId } from '../middleware/validateObjectId.js';
 
 const router = express.Router();
 
 router.use(authenticate);
+router.param('farmId', validateObjectId);
 
 router.post('/', createFarm);
 router.get('/', getFarms);
