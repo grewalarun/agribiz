@@ -8,6 +8,7 @@ import cycleRoutes from './routes/cycleRoutes.js';
 import expenseRoutes from './routes/expenseRoutes.js';
 import harvestRoutes from './routes/harvestRoutes.js';
 import saleRoutes from './routes/saleRoutes.js';
+import reportRoutes from './routes/reportRoutes.js';
 
 const app = express();
 const port = process.env.PORT || 4000;
@@ -27,6 +28,7 @@ app.use('/api/cycles', cycleRoutes);
 app.use('/api/expenses', expenseRoutes);
 app.use('/api/harvests', harvestRoutes);
 app.use('/api/sales', saleRoutes);
+app.use('/api/reports', reportRoutes);
 
 connectDB()
   .then(() => {
