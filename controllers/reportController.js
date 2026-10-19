@@ -98,6 +98,8 @@ function buildCycleRow(cycle, financials) {
     status: cycle.status,
     startDate: cycle.startDate,
     endDate: cycle.endDate,
+    expectedHarvestDate: cycle.expectedHarvestDate,
+    variety: cycle.variety,
     expenses,
     expensesByCategory: financials.expensesByCategory,
     revenue: financials.revenue,
@@ -346,6 +348,26 @@ export async function getFarmReport(req, res) {
       totals: sumRows(rows),
       fields: fieldReports
     });
+  } catch (error) {
+    return handleError(res, error);
+  }
+}
+
+// GET /api/reports/cycles?farmId=&fieldId=&status=&seasonType=&seasonYear= — P&L row per crop, newest first
+export async function getCyclesReport(req, res) {
+  try {
+    const { filter, error } = buildListFilter(req.query, req.user._id, {
+      idKeys: ['farmId', 'fieldId'],
+      stringKeys: ['status', 'seasonType', 'seasonYear']
+    });
+    if (error) {
+      return res.status(400).json({ message: error });
+    }
+
+    const cycles = await findCycles(filter);
+    const rows = await buildCycleRows(req.user._id, cycles);
+
+    return res.status(200).json({ cycles: rows.reverse(), totals: sumRows(rows) });
   } catch (error) {
     return handleError(res, error);
   }

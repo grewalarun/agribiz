@@ -4,7 +4,7 @@ import { pick } from '../utils/pick.js';
 import { handleError, isValidDate } from '../utils/errors.js';
 import { buildListFilter } from '../utils/filters.js';
 
-const UPDATABLE_FIELDS = ['category', 'description', 'amount', 'date'];
+const UPDATABLE_FIELDS = ['category', 'description', 'notes', 'amount', 'date'];
 const CYCLE_CLOSED = 'Crop cycle is closed, expenses cannot be changed';
 
 function normalizeCategory(category) {
@@ -14,7 +14,7 @@ function normalizeCategory(category) {
 export async function createExpense(req, res) {
   try {
     const { cycleId } = req.params;
-    const { description, amount, date } = req.body;
+    const { description, notes, amount, date } = req.body;
     const category = normalizeCategory(req.body.category);
 
     if (!category || amount === undefined || !date) {
@@ -42,6 +42,7 @@ export async function createExpense(req, res) {
       cycleId: cycle._id,
       category,
       description,
+      notes,
       amount,
       date
     });
@@ -85,6 +86,11 @@ export async function getExpenses(req, res) {
 
     const expenses = await Expense.find(filter)
       .populate('fieldId', 'name')
+      .populate({
+        path: 'cycleId',
+        select: 'cropId seasonType seasonYear status',
+        populate: { path: 'cropId', select: 'name localName' }
+      })
       .sort({ date: -1 });
     const total = expenses.reduce((sum, expense) => sum + expense.amount, 0);
 

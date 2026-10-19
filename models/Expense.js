@@ -19,6 +19,7 @@ const expenseSchema = new mongoose.Schema(
     cycleId: { type: mongoose.Schema.Types.ObjectId, ref: 'CropCycle', required: true },
     category: { type: String, enum: EXPENSE_CATEGORIES, required: true },
     description: { type: String, trim: true },
+    notes: { type: String, trim: true },
     amount: { type: Number, required: true, min: 0.01 },
     date: { type: Date, required: true }
   },

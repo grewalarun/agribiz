@@ -14,6 +14,8 @@ const cropCycleSchema = new mongoose.Schema(
     seasonYear: { type: String, required: true },
     startDate: { type: Date, required: true },
     endDate: { type: Date },
+    expectedHarvestDate: { type: Date },
+    variety: { type: String, trim: true },
     status: { type: String, enum: CYCLE_STATUSES, default: 'ACTIVE' },
     expectedYield: { type: Number, min: 0 },
     yieldUnit: { type: String, default: 'QTL', trim: true },
