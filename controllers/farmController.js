@@ -1,5 +1,8 @@
 import Farm from '../models/Farm.js';
 import Field from '../models/Field.js';
+import { pick } from '../utils/pick.js';
+
+const UPDATABLE_FIELDS = ['name', 'location', 'totalArea', 'areaUnit', 'irrigationType', 'soilType', 'notes', 'status'];
 
 export async function createFarm(req, res) {
   try {
@@ -56,16 +59,12 @@ export async function getFarmById(req, res) {
 export async function updateFarm(req, res) {
   try {
     const { farmId } = req.params;
-    const updates = req.body;
-
     const farm = await Farm.findOne({ _id: farmId, userId: req.user._id });
     if (!farm) {
       return res.status(404).json({ message: 'Farm not found' });
     }
 
-    Object.keys(updates).forEach((key) => {
-      farm[key] = updates[key];
-    });
+    farm.set(pick(req.body, UPDATABLE_FIELDS));
 
     await farm.save();
     return res.status(200).json({ farm });

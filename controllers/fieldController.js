@@ -1,5 +1,8 @@
 import Field from '../models/Field.js';
 import Farm from '../models/Farm.js';
+import { pick } from '../utils/pick.js';
+
+const UPDATABLE_FIELDS = ['name', 'area', 'areaUnit', 'soilType', 'irrigationType', 'notes', 'status'];
 
 export async function getFieldById(req, res) {
   try {
@@ -36,9 +39,7 @@ export async function updateField(req, res) {
       return res.status(403).json({ message: 'You do not have access to this field' });
     }
 
-    Object.keys(req.body).forEach((key) => {
-      field[key] = req.body[key];
-    });
+    field.set(pick(req.body, UPDATABLE_FIELDS));
 
     await field.save();
     return res.status(200).json({ field });
