@@ -1,4 +1,5 @@
 import Crop from '../models/Crop.js';
+import CropCycle from '../models/CropCycle.js';
 import { pick } from '../utils/pick.js';
 
 const UPDATABLE_FIELDS = ['name', 'localName', 'category', 'defaultUnit', 'defaultAreaUnit', 'active'];
@@ -86,6 +87,11 @@ export async function deleteCrop(req, res) {
 
     if (!crop) {
       return res.status(404).json({ message: 'Crop not found' });
+    }
+
+    const inUse = await CropCycle.exists({ cropId: crop._id });
+    if (inUse) {
+      return res.status(409).json({ message: 'Crop is used in crop cycles, mark it inactive instead' });
     }
 
     await crop.deleteOne();

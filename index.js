@@ -4,6 +4,8 @@ import userRoutes from './routes/userRoutes.js';
 import farmRoutes from './routes/farmRoutes.js';
 import fieldRoutes from './routes/fieldRoutes.js';
 import cropRoutes from './routes/cropRoutes.js';
+import cycleRoutes from './routes/cycleRoutes.js';
+import expenseRoutes from './routes/expenseRoutes.js';
 
 const app = express();
 const port = process.env.PORT || 4000;
@@ -19,6 +21,8 @@ app.use('/api/auth', userRoutes);
 app.use('/api/farms', farmRoutes);
 app.use('/api/fields', fieldRoutes);
 app.use('/api/crops', cropRoutes);
+app.use('/api/cycles', cycleRoutes);
+app.use('/api/expenses', expenseRoutes);
 
 connectDB()
   .then(() => {

@@ -1,5 +1,7 @@
 import Farm from '../models/Farm.js';
 import Field from '../models/Field.js';
+import CropCycle from '../models/CropCycle.js';
+import Expense from '../models/Expense.js';
 import { pick } from '../utils/pick.js';
 
 const UPDATABLE_FIELDS = ['name', 'location', 'totalArea', 'areaUnit', 'irrigationType', 'soilType', 'notes', 'status'];
@@ -83,6 +85,8 @@ export async function deleteFarm(req, res) {
       return res.status(404).json({ message: 'Farm not found' });
     }
 
+    await Expense.deleteMany({ farmId: farm._id });
+    await CropCycle.deleteMany({ farmId: farm._id });
     await Field.deleteMany({ farmId: farm._id });
     await farm.deleteOne();
 
