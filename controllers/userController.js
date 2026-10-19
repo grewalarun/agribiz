@@ -1,3 +1,4 @@
+import crypto from 'crypto';
 import dotenv from 'dotenv';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
@@ -7,13 +8,23 @@ dotenv.config();
 
 const JWT_SECRET = process.env.JWT_SECRET || 'please_change_this_secret';
 const REFRESH_TOKEN_SECRET = process.env.REFRESH_TOKEN_SECRET || 'please_change_refresh_secret';
+// Logged-in devices per user; logging in on a new one drops the oldest
+const MAX_SESSIONS = 5;
 
 function createAccessToken(user) {
   return jwt.sign({ id: user._id, email: user.email }, JWT_SECRET, { expiresIn: '15m' });
 }
 
+// jwtid makes every session's token unique, even for logins in the same second
 function createRefreshToken(user) {
-  return jwt.sign({ id: user._id, email: user.email }, REFRESH_TOKEN_SECRET, { expiresIn: '30d' });
+  return jwt.sign({ id: user._id, email: user.email }, REFRESH_TOKEN_SECRET, {
+    expiresIn: '30d',
+    jwtid: crypto.randomUUID()
+  });
+}
+
+function addSession(user, refreshToken) {
+  user.refreshTokens = [...user.refreshTokens, { token: refreshToken, createdAt: new Date() }].slice(-MAX_SESSIONS);
 }
 
 export async function register(req, res) {
@@ -39,7 +50,7 @@ export async function register(req, res) {
     const accessToken = createAccessToken(user);
     const refreshToken = createRefreshToken(user);
 
-    user.refreshTokens = [{ token: refreshToken, createdAt: new Date() }];
+    addSession(user, refreshToken);
     await user.save();
 
     return res.status(201).json({
@@ -88,7 +99,7 @@ export async function login(req, res) {
     const accessToken = createAccessToken(user);
     const refreshToken = createRefreshToken(user);
 
-    user.refreshTokens = [{ token: refreshToken, createdAt: new Date() }];
+    addSession(user, refreshToken);
     await user.save();
 
     return res.status(200).json({
@@ -151,13 +162,11 @@ export async function refreshToken(req, res) {
       return res.status(403).json({ message: 'Invalid refresh token' });
     }
 
+    // The refresh token is not rotated: the frontend may refresh from several
+    // requests at once, and rotating would make all but the first one fail.
     const newAccessToken = createAccessToken(user);
-    const newRefreshToken = createRefreshToken(user);
 
-    user.refreshTokens = [{ token: newRefreshToken, createdAt: new Date() }];
-    await user.save();
-
-    return res.status(200).json({ accessToken: newAccessToken, refreshToken: newRefreshToken });
+    return res.status(200).json({ accessToken: newAccessToken, refreshToken });
   } catch (error) {
     return res.status(403).json({ message: 'Invalid or expired refresh token' });
   }
@@ -177,7 +186,8 @@ export async function logout(req, res) {
       return res.status(200).json({ message: 'Logged out' });
     }
 
-    user.refreshTokens = [];
+    // Only end this device's session
+    user.refreshTokens = user.refreshTokens.filter((item) => item.token !== refreshToken);
     await user.save();
 
     return res.status(200).json({ message: 'Logged out' });
