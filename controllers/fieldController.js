@@ -2,6 +2,8 @@ import Field from '../models/Field.js';
 import Farm from '../models/Farm.js';
 import CropCycle from '../models/CropCycle.js';
 import Expense from '../models/Expense.js';
+import Harvest from '../models/Harvest.js';
+import Sale from '../models/Sale.js';
 import { pick } from '../utils/pick.js';
 
 const UPDATABLE_FIELDS = ['name', 'area', 'areaUnit', 'soilType', 'irrigationType', 'notes', 'status'];
@@ -65,6 +67,8 @@ export async function deleteField(req, res) {
       return res.status(403).json({ message: 'You do not have access to this field' });
     }
 
+    await Sale.deleteMany({ fieldId: field._id });
+    await Harvest.deleteMany({ fieldId: field._id });
     await Expense.deleteMany({ fieldId: field._id });
     await CropCycle.deleteMany({ fieldId: field._id });
     await field.deleteOne();
