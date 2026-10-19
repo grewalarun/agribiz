@@ -11,7 +11,7 @@ const cropSchema = new mongoose.Schema(
     localName: { type: String, trim: true },
     category: { type: String, trim: true },
     defaultUnit: { type: String, default: 'QTL', trim: true },
-    defaultAreaUnit: { type: String, default: 'ACRE', enum: ['ACRE', 'HECTARE', 'BIGHA'] },
+    defaultAreaUnit: { type: String, default: 'ACRE', enum: ['ACRE', 'HECTARE', 'BIGHA', 'KANAL'] },
     active: { type: Boolean, default: true }
   },
   { timestamps: true }

@@ -17,7 +17,7 @@ const farmSchema = new mongoose.Schema(
     totalArea: { type: Number, required: true },
     areaUnit: {
       type: String,
-      enum: ['ACRE', 'HECTARE', 'BIGHA'],
+      enum: ['ACRE', 'HECTARE', 'BIGHA', 'KANAL'],
       default: 'ACRE'
     },
     irrigationType: { type: String, trim: true },
