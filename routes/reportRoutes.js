@@ -5,7 +5,8 @@ import {
   getSeasonsReport,
   getSeasonReport,
   getFarmsReport,
-  getFarmReport
+  getFarmReport,
+  getCyclesReport
 } from '../controllers/reportController.js';
 import { authenticate } from '../middleware/authMiddleware.js';
 import { validateObjectId } from '../middleware/validateObjectId.js';
@@ -17,6 +18,7 @@ router.param('cycleId', validateObjectId);
 router.param('fieldId', validateObjectId);
 router.param('farmId', validateObjectId);
 
+router.get('/cycles', getCyclesReport);
 router.get('/cycles/:cycleId', getCycleReport);
 router.get('/fields/:fieldId', getFieldReport);
 router.get('/seasons', getSeasonsReport);

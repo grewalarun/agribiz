@@ -10,7 +10,18 @@ import { buildListFilter } from '../utils/filters.js';
 import { handleError, isValidDate } from '../utils/errors.js';
 import { SEASON_TYPES, getSeasonYear } from '../utils/season.js';
 
-const UPDATABLE_FIELDS = ['cropId', 'seasonType', 'startDate', 'endDate', 'status', 'expectedYield', 'yieldUnit', 'notes'];
+const UPDATABLE_FIELDS = [
+  'cropId',
+  'seasonType',
+  'startDate',
+  'endDate',
+  'expectedHarvestDate',
+  'status',
+  'expectedYield',
+  'yieldUnit',
+  'variety',
+  'notes'
+];
 const ACTIVE_CONFLICT = 'This field already has an active crop cycle';
 
 async function hasOtherActiveCycle(fieldId, excludeCycleId) {
@@ -24,7 +35,8 @@ async function hasOtherActiveCycle(fieldId, excludeCycleId) {
 export async function createCycle(req, res) {
   try {
     const { fieldId } = req.params;
-    const { cropId, seasonType, startDate, endDate, status, expectedYield, yieldUnit, notes } = req.body;
+    const { cropId, seasonType, startDate, endDate, expectedHarvestDate, status, expectedYield, yieldUnit, variety, notes } =
+      req.body;
 
     if (!cropId || !seasonType || !startDate) {
       return res.status(400).json({ message: 'cropId, seasonType and startDate are required' });
@@ -34,6 +46,9 @@ export async function createCycle(req, res) {
     }
     if (!isValidDate(startDate)) {
       return res.status(400).json({ message: 'Invalid startDate' });
+    }
+    if (expectedHarvestDate && !isValidDate(expectedHarvestDate)) {
+      return res.status(400).json({ message: 'Invalid expectedHarvestDate' });
     }
     if (status && !['PLANNED', 'ACTIVE'].includes(status)) {
       return res.status(400).json({ message: 'A new cycle can only be PLANNED or ACTIVE' });
@@ -66,9 +81,11 @@ export async function createCycle(req, res) {
       seasonYear: getSeasonYear(seasonType, startDate),
       startDate,
       endDate,
+      expectedHarvestDate: expectedHarvestDate || undefined,
       status: cycleStatus,
       expectedYield,
       yieldUnit: yieldUnit || crop.defaultUnit,
+      variety,
       notes
     });
 
