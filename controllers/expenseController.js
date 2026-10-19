@@ -1,8 +1,8 @@
-import mongoose from 'mongoose';
 import Expense, { EXPENSE_CATEGORIES } from '../models/Expense.js';
 import CropCycle from '../models/CropCycle.js';
 import { pick } from '../utils/pick.js';
 import { handleError, isValidDate } from '../utils/errors.js';
+import { buildListFilter } from '../utils/filters.js';
 
 const UPDATABLE_FIELDS = ['category', 'description', 'amount', 'date'];
 const CYCLE_CLOSED = 'Crop cycle is closed, expenses cannot be changed';
@@ -72,26 +72,15 @@ export async function getExpensesByCycle(req, res) {
 // GET /api/expenses?farmId=&fieldId=&cycleId=&category=&from=&to=
 export async function getExpenses(req, res) {
   try {
-    const filter = { userId: req.user._id };
-
-    for (const key of ['farmId', 'fieldId', 'cycleId']) {
-      if (req.query[key]) {
-        if (!mongoose.isValidObjectId(req.query[key])) {
-          return res.status(400).json({ message: `Invalid ${key}` });
-        }
-        filter[key] = req.query[key];
-      }
+    const { filter, error } = buildListFilter(req.query, req.user._id, {
+      idKeys: ['farmId', 'fieldId', 'cycleId'],
+      dateKey: 'date'
+    });
+    if (error) {
+      return res.status(400).json({ message: error });
     }
     if (req.query.category) {
       filter.category = normalizeCategory(String(req.query.category));
-    }
-    for (const [key, operator] of [['from', '$gte'], ['to', '$lte']]) {
-      if (req.query[key]) {
-        if (!isValidDate(req.query[key])) {
-          return res.status(400).json({ message: `Invalid ${key} date` });
-        }
-        filter.date = { ...filter.date, [operator]: new Date(req.query[key]) };
-      }
     }
 
     const expenses = await Expense.find(filter)

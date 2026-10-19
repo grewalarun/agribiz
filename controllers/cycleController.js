@@ -2,8 +2,11 @@ import mongoose from 'mongoose';
 import CropCycle from '../models/CropCycle.js';
 import Crop from '../models/Crop.js';
 import Expense from '../models/Expense.js';
+import Harvest from '../models/Harvest.js';
+import Sale from '../models/Sale.js';
 import { findOwnedField } from '../utils/ownership.js';
 import { pick } from '../utils/pick.js';
+import { buildListFilter } from '../utils/filters.js';
 import { handleError, isValidDate } from '../utils/errors.js';
 import { SEASON_TYPES, getSeasonYear } from '../utils/season.js';
 
@@ -95,20 +98,12 @@ export async function getCyclesByField(req, res) {
 // GET /api/cycles?farmId=&fieldId=&status=&seasonType=&seasonYear=
 export async function getCycles(req, res) {
   try {
-    const filter = { userId: req.user._id };
-
-    for (const key of ['farmId', 'fieldId']) {
-      if (req.query[key]) {
-        if (!mongoose.isValidObjectId(req.query[key])) {
-          return res.status(400).json({ message: `Invalid ${key}` });
-        }
-        filter[key] = req.query[key];
-      }
-    }
-    for (const key of ['status', 'seasonType', 'seasonYear']) {
-      if (req.query[key]) {
-        filter[key] = String(req.query[key]);
-      }
+    const { filter, error } = buildListFilter(req.query, req.user._id, {
+      idKeys: ['farmId', 'fieldId'],
+      stringKeys: ['status', 'seasonType', 'seasonYear']
+    });
+    if (error) {
+      return res.status(400).json({ message: error });
     }
 
     const cycles = await CropCycle.find(filter)
@@ -149,7 +144,10 @@ export async function updateCycle(req, res) {
 
     const updates = pick(req.body, UPDATABLE_FIELDS);
 
-    if (updates.cropId) {
+    if (updates.cropId && String(updates.cropId) !== String(cycle.cropId)) {
+      if (await Harvest.exists({ cycleId: cycle._id })) {
+        return res.status(409).json({ message: 'Crop cannot be changed after a harvest is recorded' });
+      }
       if (!mongoose.isValidObjectId(updates.cropId)) {
         return res.status(400).json({ message: 'Invalid cropId' });
       }
@@ -184,6 +182,8 @@ export async function deleteCycle(req, res) {
       return res.status(404).json({ message: 'Crop cycle not found' });
     }
 
+    await Sale.deleteMany({ cycleId: cycle._id });
+    await Harvest.deleteMany({ cycleId: cycle._id });
     await Expense.deleteMany({ cycleId: cycle._id });
     await cycle.deleteOne();
 
