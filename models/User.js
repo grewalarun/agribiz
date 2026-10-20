@@ -7,6 +7,8 @@ const userSchema = new mongoose.Schema(
     phone: { type: String, trim: true },
     // UI language chosen by the user; the frontend applies it on every device
     language: { type: String, enum: ['en', 'hi', 'pa'], default: 'en' },
+    // when this user last sent a test email; used to allow one per minute
+    lastTestEmailAt: { type: Date },
     password: { type: String, required: true },
     status: { type: String, enum: ['enabled', 'disabled'], default: 'enabled' },
     // store refresh tokens (simple implementation). For higher security, store hashes instead.
