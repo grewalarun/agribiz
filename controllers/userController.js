@@ -3,6 +3,8 @@ import dotenv from 'dotenv';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import User from '../models/User.js';
+import { pick } from '../utils/pick.js';
+import { handleError } from '../utils/errors.js';
 
 dotenv.config();
 
@@ -21,6 +23,19 @@ function createRefreshToken(user) {
     expiresIn: '30d',
     jwtid: crypto.randomUUID()
   });
+}
+
+// The user fields returned by the API (never the password or tokens)
+function toPublicUser(user) {
+  return {
+    id: user._id,
+    name: user.name,
+    email: user.email,
+    phone: user.phone,
+    status: user.status,
+    createdOn: user.createdOn,
+    updatedOn: user.updatedOn
+  };
 }
 
 function addSession(user, refreshToken) {
@@ -54,14 +69,7 @@ export async function register(req, res) {
     await user.save();
 
     return res.status(201).json({
-      user: {
-        id: user._id,
-        name: user.name,
-        email: user.email,
-        status: user.status,
-        createdOn: user.createdOn,
-        updatedOn: user.updatedOn
-      },
+      user: toPublicUser(user),
       accessToken,
       refreshToken
     });
@@ -103,14 +111,7 @@ export async function login(req, res) {
     await user.save();
 
     return res.status(200).json({
-      user: {
-        id: user._id,
-        name: user.name,
-        email: user.email,
-        status: user.status,
-        createdOn: user.createdOn,
-        updatedOn: user.updatedOn
-      },
+      user: toPublicUser(user),
       accessToken,
       refreshToken
     });
@@ -128,18 +129,92 @@ export async function getMe(req, res) {
     }
 
     return res.status(200).json({
-      user: {
-        id: user._id,
-        name: user.name,
-        email: user.email,
-        status: user.status,
-        createdOn: user.createdOn,
-        updatedOn: user.updatedOn
-      }
+      user: toPublicUser(user)
     });
   } catch (error) {
     console.error(error);
     return res.status(500).json({ message: 'Server error' });
+  }
+}
+
+const MIN_PASSWORD_LENGTH = 6;
+// Indian mobile number: optional +91 / 0 prefix, then 10 digits starting 6-9
+const PHONE_PATTERN = /^(?:\+?91|0)?([6-9]\d{9})$/;
+
+// PATCH /api/auth/me — name and phone only; email is the login id and stays fixed
+export async function updateMe(req, res) {
+  try {
+    const updates = pick(req.body, ['name', 'phone']);
+
+    if (updates.name !== undefined) {
+      const name = String(updates.name).trim();
+      if (!name) {
+        return res.status(400).json({ message: 'Name cannot be empty' });
+      }
+      updates.name = name;
+    }
+
+    if (updates.phone !== undefined) {
+      const raw = String(updates.phone ?? '').replace(/[\s-]/g, '');
+      if (raw === '') {
+        updates.phone = undefined;
+      } else {
+        const match = raw.match(PHONE_PATTERN);
+        if (!match) {
+          return res.status(400).json({ message: 'Enter a valid 10-digit mobile number' });
+        }
+        updates.phone = match[1];
+      }
+    }
+
+    const user = await User.findById(req.user._id);
+    if (!user) {
+      return res.status(401).json({ message: 'User not found' });
+    }
+
+    user.set(updates);
+    await user.save();
+
+    return res.status(200).json({ user: toPublicUser(user) });
+  } catch (error) {
+    return handleError(res, error);
+  }
+}
+
+// POST /api/auth/change-password — keeps the caller's session (refreshToken in the
+// body) and signs out every other device
+export async function changePassword(req, res) {
+  try {
+    const { currentPassword, newPassword, refreshToken } = req.body;
+
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({ message: 'Current and new password are required' });
+    }
+    if (String(newPassword).length < MIN_PASSWORD_LENGTH) {
+      return res.status(400).json({ message: `New password must be at least ${MIN_PASSWORD_LENGTH} characters` });
+    }
+
+    // authenticate loads the user without the password hash
+    const user = await User.findById(req.user._id);
+    if (!user) {
+      return res.status(401).json({ message: 'User not found' });
+    }
+
+    const isMatch = await bcrypt.compare(String(currentPassword), user.password);
+    if (!isMatch) {
+      return res.status(400).json({ message: 'Current password is incorrect' });
+    }
+    if (await bcrypt.compare(String(newPassword), user.password)) {
+      return res.status(400).json({ message: 'New password must be different from the current one' });
+    }
+
+    user.password = await bcrypt.hash(String(newPassword), 10);
+    user.refreshTokens = user.refreshTokens.filter((item) => refreshToken && item.token === refreshToken);
+    await user.save();
+
+    return res.status(200).json({ message: 'Password changed. Other devices have been signed out.' });
+  } catch (error) {
+    return handleError(res, error);
   }
 }
 
