@@ -32,6 +32,7 @@ function toPublicUser(user) {
     name: user.name,
     email: user.email,
     phone: user.phone,
+    language: user.language,
     status: user.status,
     createdOn: user.createdOn,
     updatedOn: user.updatedOn
@@ -44,7 +45,7 @@ function addSession(user, refreshToken) {
 
 export async function register(req, res) {
   try {
-    const { name, email, password } = req.body;
+    const { name, email, password, language } = req.body;
     if (!name || !email || !password) {
       return res.status(400).json({ message: 'Missing required fields' });
     }
@@ -59,7 +60,8 @@ export async function register(req, res) {
       name,
       email: email.toLowerCase(),
       password: hashedPassword,
-      status: 'enabled'
+      status: 'enabled',
+      ...(['en', 'hi', 'pa'].includes(language) && { language })
     });
 
     const accessToken = createAccessToken(user);
@@ -141,10 +143,10 @@ const MIN_PASSWORD_LENGTH = 6;
 // Indian mobile number: optional +91 / 0 prefix, then 10 digits starting 6-9
 const PHONE_PATTERN = /^(?:\+?91|0)?([6-9]\d{9})$/;
 
-// PATCH /api/auth/me — name and phone only; email is the login id and stays fixed
+// PATCH /api/auth/me — name, phone and language; email is the login id and stays fixed
 export async function updateMe(req, res) {
   try {
-    const updates = pick(req.body, ['name', 'phone']);
+    const updates = pick(req.body, ['name', 'phone', 'language']);
 
     if (updates.name !== undefined) {
       const name = String(updates.name).trim();
