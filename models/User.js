@@ -9,7 +9,10 @@ const userSchema = new mongoose.Schema(
     language: { type: String, enum: ['en', 'hi', 'pa'], default: 'en' },
     // when this user last sent a test email; used to allow one per minute
     lastTestEmailAt: { type: Date },
-    password: { type: String, required: true },
+    // Not set for accounts that only sign in with Google
+    password: { type: String },
+    // Set when the user signs in with Google (links to the same-email account)
+    googleId: { type: String, unique: true, sparse: true },
     status: { type: String, enum: ['enabled', 'disabled'], default: 'enabled' },
     // store refresh tokens (simple implementation). For higher security, store hashes instead.
     refreshTokens: [

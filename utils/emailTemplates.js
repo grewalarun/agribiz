@@ -53,3 +53,43 @@ export function testEmailTemplate({ subject, message, senderName, senderEmail })
 
   return { subject, html: layout({ heading: escapeHtml(subject), bodyHtml }), text };
 }
+
+const OTP_TEXTS = {
+  en: {
+    subject: (code) => `${code} is your FarmPaisa verification code`,
+    heading: 'Verify your email',
+    greeting: (name) => `Hi ${name},`,
+    intro: 'Enter this code in FarmPaisa to verify your email address:',
+    expiry: 'The code is valid for 10 minutes.',
+    ignore: "If you didn't create a FarmPaisa account, you can ignore this email."
+  },
+  hi: {
+    subject: (code) => `${code} आपका FarmPaisa सत्यापन कोड है`,
+    heading: 'अपना ईमेल सत्यापित करें',
+    greeting: (name) => `नमस्ते ${name},`,
+    intro: 'अपना ईमेल पता सत्यापित करने के लिए FarmPaisa में यह कोड डालें:',
+    expiry: 'यह कोड 10 मिनट तक मान्य है।',
+    ignore: 'अगर आपने FarmPaisa खाता नहीं बनाया है, तो इस ईमेल को अनदेखा करें।'
+  },
+  pa: {
+    subject: (code) => `${code} ਤੁਹਾਡਾ FarmPaisa ਪੁਸ਼ਟੀ ਕੋਡ ਹੈ`,
+    heading: 'ਆਪਣੀ ਈਮੇਲ ਦੀ ਪੁਸ਼ਟੀ ਕਰੋ',
+    greeting: (name) => `ਸਤ ਸ੍ਰੀ ਅਕਾਲ ${name},`,
+    intro: 'ਆਪਣੇ ਈਮੇਲ ਪਤੇ ਦੀ ਪੁਸ਼ਟੀ ਲਈ FarmPaisa ਵਿੱਚ ਇਹ ਕੋਡ ਭਰੋ:',
+    expiry: 'ਇਹ ਕੋਡ 10 ਮਿੰਟ ਲਈ ਵੈਧ ਹੈ।',
+    ignore: 'ਜੇ ਤੁਸੀਂ FarmPaisa ਖਾਤਾ ਨਹੀਂ ਬਣਾਇਆ, ਤਾਂ ਇਸ ਈਮੇਲ ਨੂੰ ਅਣਡਿੱਠਾ ਕਰੋ।'
+  }
+};
+
+// The email verification code, in the user's language
+export function otpEmailTemplate({ code, name, language }) {
+  const t = OTP_TEXTS[language] ?? OTP_TEXTS.en;
+  const bodyHtml = `
+    <p style="margin:0 0 12px;">${escapeHtml(t.greeting(name))}</p>
+    <p style="margin:0 0 16px;">${escapeHtml(t.intro)}</p>
+    <div style="margin:0 0 16px;padding:14px;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;text-align:center;font-size:32px;font-weight:800;letter-spacing:8px;color:#14532d;font-family:Menlo,Consolas,monospace;">${code}</div>
+    <p style="margin:0 0 8px;">${escapeHtml(t.expiry)}</p>
+    <p style="margin:0;color:#6b7280;font-size:13px;">${escapeHtml(t.ignore)}</p>`;
+  const text = [t.greeting(name), '', t.intro, '', code, '', t.expiry, t.ignore].join('\n');
+  return { subject: t.subject(code), html: layout({ heading: escapeHtml(t.heading), bodyHtml }), text };
+}
