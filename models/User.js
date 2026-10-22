@@ -16,6 +16,10 @@ const userSchema = new mongoose.Schema(
     status: { type: String, enum: ['enabled', 'disabled'], default: 'enabled' },
     // 'superadmin' only counts while the email is in SUPER_ADMIN_EMAILS (see utils/admin.js)
     role: { type: String, enum: ['user', 'superadmin'], default: 'user' },
+    // Which client the user last used and when (see middleware/clientInfo.js)
+    lastActiveAt: { type: Date },
+    lastPlatform: { type: String, enum: ['web', 'android', 'ios'] },
+    lastAppVersion: { type: String },
     // Opted out of announcement emails (OTP and other account emails still go out)
     emailOptOut: { type: Boolean, default: false },
     // store refresh tokens (simple implementation). For higher security, store hashes instead.
@@ -30,6 +34,8 @@ const userSchema = new mongoose.Schema(
     timestamps: { createdAt: 'createdOn', updatedAt: 'updatedOn' }
   }
 );
+
+userSchema.index({ createdOn: -1 });
 
 const User = mongoose.model('User', userSchema);
 

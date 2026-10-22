@@ -63,6 +63,12 @@ async function issueSession(res, user, status = 200, extra = {}) {
   if (user.role !== 'superadmin' && isAllowlistedAdmin(user.email)) {
     user.role = 'superadmin';
   }
+  const client = res.req.client;
+  user.lastActiveAt = new Date();
+  if (client) {
+    user.lastPlatform = client.platform;
+    user.lastAppVersion = client.appVersion;
+  }
   const accessToken = createAccessToken(user);
   const refreshToken = createRefreshToken(user);
   addSession(user, refreshToken);
