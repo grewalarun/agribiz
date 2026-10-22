@@ -1,7 +1,7 @@
 import jwt from 'jsonwebtoken';
 import User from '../models/User.js';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'please_change_this_secret';
+import { JWT_SECRET } from '../utils/secrets.js';
 
 export async function authenticate(req, res, next) {
   try {
@@ -16,6 +16,10 @@ export async function authenticate(req, res, next) {
     const user = await User.findById(decoded.id).select('-password');
     if (!user) {
       return res.status(401).json({ message: 'User not found' });
+    }
+    if (user.status !== 'enabled') {
+      // 401 so the frontend ends the session instead of treating it as "not found"
+      return res.status(401).json({ message: 'User is disabled' });
     }
 
     req.user = user;

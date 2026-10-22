@@ -14,6 +14,10 @@ const userSchema = new mongoose.Schema(
     // Set when the user signs in with Google (links to the same-email account)
     googleId: { type: String, unique: true, sparse: true },
     status: { type: String, enum: ['enabled', 'disabled'], default: 'enabled' },
+    // 'superadmin' only counts while the email is in SUPER_ADMIN_EMAILS (see utils/admin.js)
+    role: { type: String, enum: ['user', 'superadmin'], default: 'user' },
+    // Opted out of announcement emails (OTP and other account emails still go out)
+    emailOptOut: { type: Boolean, default: false },
     // store refresh tokens (simple implementation). For higher security, store hashes instead.
     refreshTokens: [
       {

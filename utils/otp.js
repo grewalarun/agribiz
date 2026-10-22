@@ -1,4 +1,5 @@
 import crypto from 'crypto';
+import { JWT_SECRET } from './secrets.js';
 
 // Email verification codes: 6 digits, valid for 10 minutes, 5 wrong tries per code,
 // a new code at most once a minute.
@@ -6,7 +7,7 @@ export const OTP_TTL_MS = 10 * 60 * 1000;
 export const OTP_MAX_ATTEMPTS = 5;
 export const OTP_RESEND_MS = 60 * 1000;
 
-const SECRET = process.env.JWT_SECRET || 'please_change_this_secret';
+const SECRET = JWT_SECRET;
 
 function hashCode(key, code) {
   return crypto.createHmac('sha256', SECRET).update(`${key}:${code}`).digest('hex');
