@@ -370,7 +370,10 @@ const PHONE_PATTERN = /^(?:\+?91|0)?([6-9]\d{9})$/;
 // PATCH /api/auth/me — name, phone and language; email is the login id and stays fixed
 export async function updateMe(req, res) {
   try {
-    const updates = pick(req.body, ['name', 'phone', 'language']);
+    const updates = pick(req.body, ['name', 'phone', 'language', 'emailOptOut']);
+    if (updates.emailOptOut !== undefined && typeof updates.emailOptOut !== 'boolean') {
+      return res.status(400).json({ message: 'emailOptOut must be true or false' });
+    }
 
     if (updates.name !== undefined) {
       const name = String(updates.name).trim();

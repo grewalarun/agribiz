@@ -28,7 +28,7 @@ function getClient() {
 
 // Sends one email through Resend. Returns { id }; throws EmailError (503 when not
 // configured, 502 when Resend rejects or can't be reached).
-export async function sendEmail({ to, subject, html, text, replyTo }) {
+export async function sendEmail({ to, subject, html, text, replyTo, headers }) {
   const resend = getClient();
   let result;
   try {
@@ -38,7 +38,8 @@ export async function sendEmail({ to, subject, html, text, replyTo }) {
       subject,
       html,
       text,
-      ...(replyTo && { replyTo })
+      ...(replyTo && { replyTo }),
+      ...(headers && { headers })
     });
   } catch (error) {
     throw new EmailError(502, `Could not reach the email service: ${error.message}`);
@@ -47,4 +48,27 @@ export async function sendEmail({ to, subject, html, text, replyTo }) {
     throw new EmailError(502, result.error.message || 'The email service rejected the email');
   }
   return { id: result.data?.id };
+}
+
+// Sends up to 100 different emails in one Resend request. Returns one entry per input,
+// in order: { id } when accepted or { error } when Resend rejected that one. Throws
+// EmailError when the whole request fails (not configured, unreachable, rejected).
+export async function sendEmailBatch(emails) {
+  const resend = getClient();
+  const from = process.env.RESEND_FROM || DEFAULT_FROM;
+  let result;
+  try {
+    result = await resend.batch.send(
+      emails.map((email) => ({ from, ...email })),
+      { batchValidation: 'permissive' }
+    );
+  } catch (error) {
+    throw new EmailError(502, `Could not reach the email service: ${error.message}`);
+  }
+  if (result.error) {
+    throw new EmailError(502, result.error.message || 'The email service rejected the emails');
+  }
+  const errors = new Map((result.data?.errors ?? []).map((item) => [item.index, item.message]));
+  const ids = [...(result.data?.data ?? [])];
+  return emails.map((_, index) => (errors.has(index) ? { error: errors.get(index) } : { id: ids.shift()?.id }));
 }
