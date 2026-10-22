@@ -1,7 +1,9 @@
+import mongoose from 'mongoose';
 import User from '../models/User.js';
 import { EmailError, sendEmail } from '../utils/email.js';
-import { testEmailTemplate } from '../utils/emailTemplates.js';
+import { escapeHtml, testEmailTemplate } from '../utils/emailTemplates.js';
 import { handleError } from '../utils/errors.js';
+import { isValidUnsubscribe } from '../utils/unsubscribe.js';
 
 const TEST_EMAIL_INTERVAL_MS = 60 * 1000;
 const MAX_SUBJECT = 150;
@@ -68,5 +70,27 @@ export async function sendTestEmail(req, res) {
       return res.status(error.status).json({ message: error.message });
     }
     return handleError(res, error);
+  }
+}
+
+const page = (title, text) => `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(title)}</title></head>
+<body style="margin:0;font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;background:#faf9f5;display:flex;min-height:100vh;align-items:center;justify-content:center;">
+<div style="max-width:420px;margin:16px;padding:28px;background:#fff;border:1px solid #ecebe4;border-radius:12px;text-align:center;">
+<div style="font-size:22px;font-weight:800;color:#166534;">Farm<span style="color:#ca8a04;">Paisa</span></div>
+<h1 style="font-size:18px;color:#14532d;">${escapeHtml(title)}</h1><p style="color:#4b5563;font-size:14px;line-height:1.5;">${escapeHtml(text)}</p></div></body></html>`;
+
+// GET /api/email/unsubscribe?u=<userId>&t=<token> — the link in announcement emails.
+// Account emails such as verification codes are still sent. Settings can switch announcements back on.
+export async function unsubscribe(req, res) {
+  try {
+    const { u, t } = req.query;
+    if (!mongoose.isValidObjectId(u) || !isValidUnsubscribe(u, t)) {
+      return res.status(400).type('html').send(page('Link not valid', 'This unsubscribe link is not valid. You can turn announcement emails off in FarmPaisa under Settings.'));
+    }
+    await User.updateOne({ _id: u }, { $set: { emailOptOut: true } });
+    return res.status(200).type('html').send(page('You are unsubscribed', 'You will no longer get announcement emails from FarmPaisa. You can turn them back on in Settings.'));
+  } catch (error) {
+    console.error(error);
+    return res.status(500).type('html').send(page('Something went wrong', 'Please try again in a moment.'));
   }
 }

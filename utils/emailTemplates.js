@@ -93,3 +93,28 @@ export function otpEmailTemplate({ code, name, language }) {
   const text = [t.greeting(name), '', t.intro, '', code, '', t.expiry, t.ignore].join('\n');
   return { subject: t.subject(code), html: layout({ heading: escapeHtml(t.heading), bodyHtml }), text };
 }
+
+const ANNOUNCEMENT_TEXTS = {
+  en: { greeting: (name) => `Hi ${name},`, unsubscribe: 'Unsubscribe from announcement emails', unsubscribeNote: "You're receiving this because you have a FarmPaisa account." },
+  hi: { greeting: (name) => `नमस्ते ${name},`, unsubscribe: 'घोषणा वाले ईमेल बंद करें', unsubscribeNote: 'आपको यह ईमेल इसलिए मिला है क्योंकि आपका FarmPaisa खाता है।' },
+  pa: { greeting: (name) => `ਸਤ ਸ੍ਰੀ ਅਕਾਲ ${name},`, unsubscribe: 'ਘੋਸ਼ਣਾ ਵਾਲੀਆਂ ਈਮੇਲਾਂ ਬੰਦ ਕਰੋ', unsubscribeNote: 'ਤੁਹਾਨੂੰ ਇਹ ਈਮੇਲ ਇਸ ਲਈ ਮਿਲੀ ਹੈ ਕਿਉਂਕਿ ਤੁਹਾਡਾ FarmPaisa ਖਾਤਾ ਹੈ।' }
+};
+
+// {{name}} in the admin's text becomes the user's name
+export function fillName(text, name) {
+  return String(text).replace(/\{\{\s*name\s*\}\}/gi, name);
+}
+
+// An admin announcement: the admin's subject and message plus a greeting and an
+// unsubscribe link in the user's language. Text is escaped; newlines become <br>.
+export function announcementEmailTemplate({ subject, body, name, language, unsubscribeUrl }) {
+  const t = ANNOUNCEMENT_TEXTS[language] ?? ANNOUNCEMENT_TEXTS.en;
+  const finalSubject = fillName(subject, name);
+  const finalBody = fillName(body, name);
+  const bodyHtml = `
+    <p style="margin:0 0 12px;">${escapeHtml(t.greeting(name))}</p>
+    <div style="margin:0 0 20px;">${escapeHtml(finalBody).replace(/\n/g, '<br>')}</div>
+    <p style="margin:0;color:#9ca3af;font-size:12px;">${escapeHtml(t.unsubscribeNote)} <a href="${escapeHtml(unsubscribeUrl)}" style="color:#6b7280;">${escapeHtml(t.unsubscribe)}</a></p>`;
+  const text = [t.greeting(name), '', finalBody, '', '--', t.unsubscribeNote, `${t.unsubscribe}: ${unsubscribeUrl}`].join('\n');
+  return { subject: finalSubject, html: layout({ heading: escapeHtml(finalSubject), bodyHtml }), text };
+}
