@@ -11,11 +11,11 @@ import { EmailError, isEmailConfigured, sendEmail } from '../utils/email.js';
 import { otpEmailTemplate } from '../utils/emailTemplates.js';
 import { OTP_MAX_ATTEMPTS, OTP_RESEND_MS, createOtp, otpMatches, resendWait } from '../utils/otp.js';
 import { GoogleAuthError, verifyGoogleCredential } from '../utils/google.js';
+import { JWT_SECRET, REFRESH_TOKEN_SECRET } from '../utils/secrets.js';
+import { isAllowlistedAdmin, isSuperAdmin } from '../utils/admin.js';
 
 dotenv.config();
 
-const JWT_SECRET = process.env.JWT_SECRET || 'please_change_this_secret';
-const REFRESH_TOKEN_SECRET = process.env.REFRESH_TOKEN_SECRET || 'please_change_refresh_secret';
 // Logged-in devices per user; logging in on a new one drops the oldest
 const MAX_SESSIONS = 5;
 
@@ -40,6 +40,8 @@ function toPublicUser(user) {
     phone: user.phone,
     language: user.language,
     status: user.status,
+    role: isSuperAdmin(user) ? 'superadmin' : 'user',
+    emailOptOut: Boolean(user.emailOptOut),
     hasPassword: Boolean(user.password),
     hasGoogle: Boolean(user.googleId),
     createdOn: user.createdOn,
@@ -57,6 +59,16 @@ const MAX_SIGNUPS_PER_HOUR = 5;
 
 // Logs the user in: a new session plus the response shape shared by every login route
 async function issueSession(res, user, status = 200, extra = {}) {
+  // Emails in SUPER_ADMIN_EMAILS become super admins when they log in
+  if (user.role !== 'superadmin' && isAllowlistedAdmin(user.email)) {
+    user.role = 'superadmin';
+  }
+  const client = res.req.client;
+  user.lastActiveAt = new Date();
+  if (client) {
+    user.lastPlatform = client.platform;
+    user.lastAppVersion = client.appVersion;
+  }
   const accessToken = createAccessToken(user);
   const refreshToken = createRefreshToken(user);
   addSession(user, refreshToken);

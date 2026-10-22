@@ -10,11 +10,14 @@ import harvestRoutes from './routes/harvestRoutes.js';
 import saleRoutes from './routes/saleRoutes.js';
 import reportRoutes from './routes/reportRoutes.js';
 import emailRoutes from './routes/emailRoutes.js';
+import adminRoutes from './routes/adminRoutes.js';
+import { clientInfo } from './middleware/clientInfo.js';
 
 const app = express();
 const port = process.env.PORT || 4000;
 
 app.use(express.json());
+app.use(clientInfo);
 
 app.get('/', (req, res) => {
   res.send('Hello, World!');
@@ -31,6 +34,7 @@ app.use('/api/harvests', harvestRoutes);
 app.use('/api/sales', saleRoutes);
 app.use('/api/reports', reportRoutes);
 app.use('/api/email', emailRoutes);
+app.use('/api/admin', adminRoutes);
 
 connectDB()
   .then(() => {
