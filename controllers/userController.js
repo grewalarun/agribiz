@@ -5,6 +5,7 @@ import jwt from 'jsonwebtoken';
 import mongoose from 'mongoose';
 import User from '../models/User.js';
 import PendingSignup from '../models/PendingSignup.js';
+import PasswordReset from '../models/PasswordReset.js';
 import { pick } from '../utils/pick.js';
 import { handleError } from '../utils/errors.js';
 import { EmailError, isEmailConfigured, sendEmail } from '../utils/email.js';
@@ -77,50 +78,88 @@ async function issueSession(res, user, status = 200, extra = {}) {
 }
 
 // Emails the code. Without RESEND_API_KEY outside production, the code is printed
-// to the server console instead so signup can be tried locally.
-async function deliverCode(pending, code) {
+// to the server console instead so signup and reset can be tried locally.
+// `record` is a PendingSignup or PasswordReset (both have email, name, language).
+async function deliverCode(record, code, purpose) {
   if (!isEmailConfigured() && process.env.NODE_ENV !== 'production') {
-    console.log(`[dev] Verification code for ${pending.email}: ${code}`);
+    console.log(`[dev] ${purpose === 'reset' ? 'Password reset' : 'Verification'} code for ${record.email}: ${code}`);
     return;
   }
-  await sendEmail({ to: pending.email, ...otpEmailTemplate({ code, name: pending.name, language: pending.language }) });
+  await sendEmail({ to: record.email, ...otpEmailTemplate({ code, name: record.name, language: record.language, purpose }) });
 }
 
-// Sends a new code for this signup unless one went out in the last minute.
+// Sends a new code for this record unless one went out in the last minute.
 // Returns the seconds until another code may be sent.
-async function sendCode(pending) {
+async function sendCode(Model, record, purpose = 'verify') {
   const now = new Date();
-  const { code, otp } = createOtp(String(pending._id), now);
+  const { code, otp } = createOtp(String(record._id), now);
   // Claim the send atomically so two quick requests can't both send
-  const previous = await PendingSignup.findOneAndUpdate(
+  const previous = await Model.findOneAndUpdate(
     {
-      _id: pending._id,
+      _id: record._id,
       $or: [{ 'otp.sentAt': { $exists: false } }, { 'otp.sentAt': null }, { 'otp.sentAt': { $lte: new Date(now.getTime() - OTP_RESEND_MS) } }]
     },
     { $set: { otp } },
     { returnDocument: 'before' }
   );
   if (!previous) {
-    const current = await PendingSignup.findById(pending._id).select('otp');
+    const current = await Model.findById(record._id).select('otp');
     return resendWait(current?.otp, now);
   }
   try {
-    await deliverCode(pending, code);
+    await deliverCode(record, code, purpose);
   } catch (error) {
     // Keep the earlier code (and the user's minute) when the email couldn't be sent
-    await PendingSignup.updateOne({ _id: pending._id, 'otp.hash': otp.hash }, { $set: { otp: previous.toObject().otp ?? {} } });
+    await Model.updateOne({ _id: record._id, 'otp.hash': otp.hash }, { $set: { otp: previous.toObject().otp ?? {} } });
     throw error;
   }
   return OTP_RESEND_MS / 1000;
+}
+
+// Checks a code for this record. Returns { record } with the latest copy when it
+// matches, otherwise { error } with the response body.
+async function checkCode(Model, record, code) {
+  // Use up one try before comparing, so parallel guesses can't exceed the limit
+  const now = new Date();
+  const claimed = await Model.findOneAndUpdate(
+    { _id: record._id, 'otp.hash': { $exists: true }, 'otp.expiresAt': { $gt: now }, 'otp.attempts': { $lt: OTP_MAX_ATTEMPTS } },
+    { $inc: { 'otp.attempts': 1 } },
+    { returnDocument: 'after' }
+  );
+  const tooMany = { message: 'Too many incorrect tries. Please request a new code.', code: 'TOO_MANY_ATTEMPTS' };
+  if (!claimed) {
+    if (record.otp?.expiresAt && record.otp.expiresAt > now) return { error: tooMany };
+    return { error: { message: 'This code has expired. Please request a new code.', code: 'CODE_EXPIRED' } };
+  }
+  if (!otpMatches(claimed.otp, String(claimed._id), String(code ?? '').trim())) {
+    const attemptsLeft = OTP_MAX_ATTEMPTS - claimed.otp.attempts;
+    return {
+      error: attemptsLeft > 0
+        ? { message: `Incorrect code. ${attemptsLeft} ${attemptsLeft === 1 ? 'try' : 'tries'} left.`, code: 'WRONG_CODE', attemptsLeft }
+        : tooMany
+    };
+  }
+  return { record: claimed };
+}
+
+// Answers a resend request: 429 during the one-minute wait, otherwise a new code
+async function resendFor(res, Model, record, purpose) {
+  const waitBefore = resendWait(record.otp);
+  if (waitBefore > 0) {
+    res.set('Retry-After', String(waitBefore));
+    return res.status(429).json({ message: `Please wait ${waitBefore} seconds before asking for a new code`, retryAfter: waitBefore });
+  }
+  const retryAfter = await sendCode(Model, record, purpose);
+  return res.status(200).json({ message: 'A new code has been sent', retryAfter });
 }
 
 function verificationResponse(pending, retryAfter) {
   return { verificationRequired: true, verificationId: pending._id, email: pending.email, retryAfter };
 }
 
-function emailErrorResponse(res, error) {
+function emailErrorResponse(res, error, what = 'verification email') {
   if (error instanceof EmailError) {
-    return res.status(error.status).json({ message: `Could not send the verification email. ${error.message}` });
+    return res.status(error.status).json({ message: `Could not send the ${what}. ${error.message}` });
   }
   return null;
 }
@@ -156,7 +195,7 @@ export async function register(req, res) {
     });
 
     try {
-      const retryAfter = await sendCode(pending);
+      const retryAfter = await sendCode(PendingSignup, pending);
       return res.status(201).json(verificationResponse(pending, retryAfter));
     } catch (error) {
       await PendingSignup.deleteOne({ _id: pending._id });
@@ -185,7 +224,7 @@ export async function login(req, res) {
       const pendings = await PendingSignup.find({ email: normalizedEmail }).sort({ createdAt: -1 }).limit(MAX_SIGNUPS_PER_HOUR);
       for (const pending of pendings) {
         if (await bcrypt.compare(String(password), pending.password)) {
-          const retryAfter = await sendCode(pending);
+          const retryAfter = await sendCode(PendingSignup, pending);
           return res.status(403).json({ message: 'Please verify your email', ...verificationResponse(pending, retryAfter) });
         }
       }
@@ -228,28 +267,11 @@ export async function verifyEmail(req, res) {
       return res.status(400).json(SIGNUP_EXPIRED);
     }
 
-    // Use up one try before comparing, so parallel guesses can't exceed the limit
-    const now = new Date();
-    const claimed = await PendingSignup.findOneAndUpdate(
-      { _id: pending._id, 'otp.hash': { $exists: true }, 'otp.expiresAt': { $gt: now }, 'otp.attempts': { $lt: OTP_MAX_ATTEMPTS } },
-      { $inc: { 'otp.attempts': 1 } },
-      { returnDocument: 'after' }
-    );
-    if (!claimed) {
-      if (pending.otp?.expiresAt && pending.otp.expiresAt > now) {
-        return res.status(400).json({ message: 'Too many incorrect tries. Please request a new code.', code: 'TOO_MANY_ATTEMPTS' });
-      }
-      return res.status(400).json({ message: 'This code has expired. Please request a new code.', code: 'CODE_EXPIRED' });
+    const checked = await checkCode(PendingSignup, pending, code);
+    if (checked.error) {
+      return res.status(400).json(checked.error);
     }
-
-    if (!otpMatches(claimed.otp, String(claimed._id), String(code ?? '').trim())) {
-      const attemptsLeft = OTP_MAX_ATTEMPTS - claimed.otp.attempts;
-      return res.status(400).json(
-        attemptsLeft > 0
-          ? { message: `Incorrect code. ${attemptsLeft} ${attemptsLeft === 1 ? 'try' : 'tries'} left.`, code: 'WRONG_CODE', attemptsLeft }
-          : { message: 'Too many incorrect tries. Please request a new code.', code: 'TOO_MANY_ATTEMPTS' }
-      );
-    }
+    const claimed = checked.record;
 
     // The email is confirmed: this signup becomes the account, other pending ones go
     await PendingSignup.deleteMany({ email: claimed.email });
@@ -285,13 +307,7 @@ export async function resendCode(req, res) {
     if (!pending) {
       return res.status(400).json(SIGNUP_EXPIRED);
     }
-    const waitBefore = resendWait(pending.otp);
-    if (waitBefore > 0) {
-      res.set('Retry-After', String(waitBefore));
-      return res.status(429).json({ message: `Please wait ${waitBefore} seconds before asking for a new code`, retryAfter: waitBefore });
-    }
-    const retryAfter = await sendCode(pending);
-    return res.status(200).json({ message: 'A new code has been sent', retryAfter });
+    return await resendFor(res, PendingSignup, pending, 'verify');
   } catch (error) {
     return emailErrorResponse(res, error) ?? handleError(res, error);
   }
@@ -342,6 +358,98 @@ export async function googleSignIn(req, res) {
     if (error instanceof GoogleAuthError) {
       return res.status(error.status).json({ message: error.message });
     }
+    return handleError(res, error);
+  }
+}
+
+// Password reset requests allowed per email address per hour (each one sends an email)
+const MAX_RESETS_PER_HOUR = 5;
+const RESET_EXPIRED = { message: 'This reset request has expired. Please start again.', code: 'RESET_EXPIRED' };
+
+async function findReset(resetId) {
+  if (!mongoose.isValidObjectId(resetId)) return null;
+  return PasswordReset.findById(resetId);
+}
+
+// POST /api/auth/forgot-password { email } — emails a code for setting a new password
+export async function forgotPassword(req, res) {
+  try {
+    const email = String(req.body.email ?? '').trim().toLowerCase();
+    if (!email) {
+      return res.status(400).json({ message: 'Email is required' });
+    }
+    const user = await User.findOne({ email });
+    if (!user) {
+      return res.status(404).json({ message: 'No account with this email', code: 'NO_ACCOUNT' });
+    }
+    if (user.status !== 'enabled') {
+      return res.status(403).json({ message: 'User is disabled' });
+    }
+
+    const recent = await PasswordReset.countDocuments({ email, createdAt: { $gte: new Date(Date.now() - 60 * 60 * 1000) } });
+    if (recent >= MAX_RESETS_PER_HOUR) {
+      return res.status(429).json({ message: 'Too many reset requests for this email. Please try again in an hour.' });
+    }
+
+    const reset = await PasswordReset.create({ user: user._id, email, name: user.name, language: user.language });
+    try {
+      const retryAfter = await sendCode(PasswordReset, reset, 'reset');
+      return res.status(201).json({ resetId: reset._id, email, retryAfter });
+    } catch (error) {
+      await PasswordReset.deleteOne({ _id: reset._id });
+      throw error;
+    }
+  } catch (error) {
+    return emailErrorResponse(res, error, 'password reset email') ?? handleError(res, error);
+  }
+}
+
+// POST /api/auth/resend-reset-code { resetId } — at most once a minute
+export async function resendResetCode(req, res) {
+  try {
+    const reset = await findReset(req.body.resetId);
+    if (!reset) {
+      return res.status(400).json(RESET_EXPIRED);
+    }
+    return await resendFor(res, PasswordReset, reset, 'reset');
+  } catch (error) {
+    return emailErrorResponse(res, error, 'password reset email') ?? handleError(res, error);
+  }
+}
+
+// POST /api/auth/reset-password { resetId, code, newPassword } — sets the password,
+// signs out every device and logs in here
+export async function resetPassword(req, res) {
+  try {
+    const { resetId, code, newPassword } = req.body;
+    if (String(newPassword ?? '').length < MIN_PASSWORD_LENGTH) {
+      return res.status(400).json({ message: `New password must be at least ${MIN_PASSWORD_LENGTH} characters`, code: 'PASSWORD_TOO_SHORT' });
+    }
+    const reset = await findReset(resetId);
+    if (!reset) {
+      return res.status(400).json(RESET_EXPIRED);
+    }
+
+    const checked = await checkCode(PasswordReset, reset, code);
+    if (checked.error) {
+      return res.status(400).json(checked.error);
+    }
+
+    // Only one reset can use the code; the others for this user go too
+    const { deletedCount } = await PasswordReset.deleteOne({ _id: reset._id });
+    if (!deletedCount) {
+      return res.status(400).json(RESET_EXPIRED);
+    }
+    await PasswordReset.deleteMany({ user: reset.user });
+
+    const user = await User.findById(reset.user);
+    if (!user || user.status !== 'enabled') {
+      return res.status(403).json({ message: 'User is disabled' });
+    }
+    user.password = await bcrypt.hash(String(newPassword), 10);
+    user.refreshTokens = [];
+    return issueSession(res, user);
+  } catch (error) {
     return handleError(res, error);
   }
 }

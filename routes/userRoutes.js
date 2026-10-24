@@ -10,7 +10,10 @@ import {
   changePassword,
   verifyEmail,
   resendCode,
-  googleSignIn
+  googleSignIn,
+  forgotPassword,
+  resendResetCode,
+  resetPassword
 } from '../controllers/userController.js';
 import { authenticate } from '../middleware/authMiddleware.js';
 
@@ -22,6 +25,9 @@ router.post('/login', login);
 router.post('/verify-email', verifyEmail);
 router.post('/resend-code', resendCode);
 router.post('/google', googleSignIn);
+router.post('/forgot-password', forgotPassword);
+router.post('/resend-reset-code', resendResetCode);
+router.post('/reset-password', resetPassword);
 router.get('/me', authenticate, getMe);
 router.patch('/me', authenticate, updateMe);
 router.post('/change-password', authenticate, changePassword);
