@@ -81,9 +81,32 @@ const OTP_TEXTS = {
   }
 };
 
-// The email verification code, in the user's language
-export function otpEmailTemplate({ code, name, language }) {
-  const t = OTP_TEXTS[language] ?? OTP_TEXTS.en;
+// Same layout for the password reset code; greeting and expiry are shared
+const RESET_TEXTS = {
+  en: {
+    subject: (code) => `${code} is your FarmPaisa password reset code`,
+    heading: 'Reset your password',
+    intro: 'Enter this code in FarmPaisa to set a new password:',
+    ignore: "If you didn't ask to reset your password, ignore this email. Your password stays the same."
+  },
+  hi: {
+    subject: (code) => `${code} आपका FarmPaisa पासवर्ड रीसेट कोड है`,
+    heading: 'अपना पासवर्ड रीसेट करें',
+    intro: 'नया पासवर्ड बनाने के लिए FarmPaisa में यह कोड डालें:',
+    ignore: 'अगर आपने पासवर्ड रीसेट नहीं मांगा है, तो इस ईमेल को अनदेखा करें। आपका पासवर्ड नहीं बदलेगा।'
+  },
+  pa: {
+    subject: (code) => `${code} ਤੁਹਾਡਾ FarmPaisa ਪਾਸਵਰਡ ਰੀਸੈੱਟ ਕੋਡ ਹੈ`,
+    heading: 'ਆਪਣਾ ਪਾਸਵਰਡ ਰੀਸੈੱਟ ਕਰੋ',
+    intro: 'ਨਵਾਂ ਪਾਸਵਰਡ ਬਣਾਉਣ ਲਈ FarmPaisa ਵਿੱਚ ਇਹ ਕੋਡ ਭਰੋ:',
+    ignore: 'ਜੇ ਤੁਸੀਂ ਪਾਸਵਰਡ ਰੀਸੈੱਟ ਨਹੀਂ ਮੰਗਿਆ, ਤਾਂ ਇਸ ਈਮੇਲ ਨੂੰ ਅਣਡਿੱਠਾ ਕਰੋ। ਤੁਹਾਡਾ ਪਾਸਵਰਡ ਨਹੀਂ ਬਦਲੇਗਾ।'
+  }
+};
+
+// A 6-digit code email in the user's language. purpose: 'verify' (signup) or 'reset' (forgot password)
+export function otpEmailTemplate({ code, name, language, purpose = 'verify' }) {
+  const base = OTP_TEXTS[language] ?? OTP_TEXTS.en;
+  const t = purpose === 'reset' ? { ...base, ...(RESET_TEXTS[language] ?? RESET_TEXTS.en) } : base;
   const bodyHtml = `
     <p style="margin:0 0 12px;">${escapeHtml(t.greeting(name))}</p>
     <p style="margin:0 0 16px;">${escapeHtml(t.intro)}</p>
